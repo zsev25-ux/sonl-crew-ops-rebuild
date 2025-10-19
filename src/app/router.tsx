@@ -5,7 +5,7 @@ import {
   Navigate,
 } from 'react-router-dom';
 import { Layout } from './Layout';
-import { useAuth } from './AuthProvider';
+import { AuthProvider, useAuth } from './AuthProvider';
 
 // Placeholder Loading Component
 const PageLoader = () => (
@@ -80,7 +80,11 @@ const router = createBrowserRouter([
 ]);
 
 export function AppRouter() {
-  return <RouterProvider router={router} />;
+  return (
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
+  );
 }
 
 export { ProtectedRoute, LoginScreen };
