@@ -19,11 +19,20 @@ export const setCustomClaims = onDocumentWritten("users/{userId}", async (event)
   const beforeData = event.data?.before.data();
   const auth = getAuth();
 
+  const getCurrentClaims = async () => {
+    const user = await auth.getUser(userId);
+    return { ...(user.customClaims ?? {}) } as Record<string, any>;
+  };
+
+  const applyClaims = async (claims: Record<string, any>) => {
+    const nextClaims = Object.keys(claims).length ? claims : null;
+    await auth.setCustomUserClaims(userId, nextClaims);
+  };
+
   // No data after write (e.g., document deletion). Remove the role claim if it exists.
   if (!afterData) {
     try {
-      const user = await auth.getUser(userId);
-      const currentClaims = { ...(user.customClaims ?? {}) };
+      const currentClaims = await getCurrentClaims();
 
       if (!("role" in currentClaims)) {
         logger.info(`User doc ${userId} deleted, no role claim to remove.`);
@@ -31,7 +40,7 @@ export const setCustomClaims = onDocumentWritten("users/{userId}", async (event)
       }
 
       delete currentClaims.role;
-      await auth.setCustomUserClaims(userId, Object.keys(currentClaims).length ? currentClaims : {});
+      await applyClaims(currentClaims);
       logger.info(`Removed role claim for ${userId} after document deletion.`);
     } catch (error) {
       logger.error(`Error removing role claim for ${userId} after deletion:`, error);
@@ -45,8 +54,7 @@ export const setCustomClaims = onDocumentWritten("users/{userId}", async (event)
   // If the new role is undefined/null, remove the claim.
   if (newRole === undefined || newRole === null) {
     try {
-      const user = await auth.getUser(userId);
-      const currentClaims = { ...(user.customClaims ?? {}) };
+      const currentClaims = await getCurrentClaims();
 
       if (!("role" in currentClaims)) {
         logger.info(`Role removed for ${userId}, no existing role claim to clear.`);
@@ -54,7 +62,7 @@ export const setCustomClaims = onDocumentWritten("users/{userId}", async (event)
       }
 
       delete currentClaims.role;
-      await auth.setCustomUserClaims(userId, Object.keys(currentClaims).length ? currentClaims : {});
+      await applyClaims(currentClaims);
       logger.info(`Cleared role claim for ${userId} due to missing role field.`);
     } catch (error) {
       logger.error(`Error clearing role claim for ${userId}:`, error);
@@ -69,11 +77,10 @@ export const setCustomClaims = onDocumentWritten("users/{userId}", async (event)
   }
 
   try {
-    const user = await auth.getUser(userId);
-    const currentClaims = { ...(user.customClaims ?? {}) };
+    const currentClaims = await getCurrentClaims();
     const updatedClaims = { ...currentClaims, role: newRole };
 
-    await auth.setCustomUserClaims(userId, updatedClaims);
+    await applyClaims(updatedClaims);
     logger.info(`Successfully set custom claim for ${userId}: { role: ${newRole} }`);
   } catch (error) {
     logger.error(`Error setting custom claim for ${userId}:`, error);
