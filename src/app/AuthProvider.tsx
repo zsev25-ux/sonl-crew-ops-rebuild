@@ -1,5 +1,6 @@
-import React, { createContext, useContext, useEffect, useMemo, useState } from 'react';
-import { onAuthStateChanged, User } from 'firebase/auth';
+import React, { createContext, useContext, useEffect, useState } from 'react';
+// Correctly import User from the main 'firebase/auth' entry point
+import { onAuthStateChanged, type User } from 'firebase/auth'; 
 import { auth, ensureAnonAuth } from '../shared/lib/firebase';
 
 interface AuthContextType {
@@ -8,7 +9,11 @@ interface AuthContextType {
   role: string | null;
 }
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+const AuthContext = createContext<AuthContextType>({
+  user: null,
+  isLoading: true,
+  role: null,
+});
 
 export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [user, setUser] = useState<User | null>(null);
@@ -16,48 +21,42 @@ export const AuthProvider = ({ children }: { children: React.ReactNode }) => {
   const [role, setRole] = useState<string | null>(null);
 
   useEffect(() => {
-    ensureAnonAuth().catch((error) => {
-      console.error('Failed to ensure anonymous authentication:', error);
-    });
+    ensureAnonAuth().catch(console.error);
 
-    const unsubscribe = onAuthStateChanged(auth, async (nextUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setIsLoading(true);
-      setUser(nextUser);
+      setUser(user);
 
-      if (nextUser) {
+      if (user) {
         try {
-          const idTokenResult = await nextUser.getIdTokenResult(true);
-          const userRole = (idTokenResult.claims.role as string | undefined) ?? 'crew';
+          const idTokenResult = await user.getIdTokenResult(true); 
+          const userRole = (idTokenResult.claims.role as string) || 'crew'; 
           setRole(userRole);
         } catch (error) {
           console.error('Error getting user role:', error);
-          setRole('crew');
+          setRole('crew'); 
         }
       } else {
         setRole(null);
       }
-
       setIsLoading(false);
     });
 
     return () => unsubscribe();
   }, []);
 
-  const value = useMemo(
-    () => ({
-      user,
-      isLoading,
-      role,
-    }),
-    [isLoading, role, user],
-  );
+  const value = { user, isLoading, role };
 
-  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
+  return (
+    <AuthContext.Provider value={value}>
+      {children}
+    </AuthContext.Provider>
+  );
 };
 
 export const useAuth = () => {
   const context = useContext(AuthContext);
-  if (!context) {
+  if (context === undefined) {
     throw new Error('useAuth must be used within an AuthProvider');
   }
   return context;

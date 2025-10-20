@@ -1,12 +1,13 @@
-import { getApp, getApps, initializeApp } from 'firebase/app';
+import { initializeApp, getApps, type FirebaseApp } from 'firebase/app'; 
 import {
   getAuth,
   signInAnonymously,
   onAuthStateChanged,
-  type User,
+  type Auth,
+  type User
 } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
-import { getStorage } from 'firebase/storage';
+import { getFirestore, type Firestore } from 'firebase/firestore';
+import { getStorage, type FirebaseStorage } from 'firebase/storage';
 
 const firebaseConfig = {
   apiKey: import.meta.env.VITE_FIREBASE_API_KEY,
@@ -17,29 +18,49 @@ const firebaseConfig = {
   appId: import.meta.env.VITE_FIREBASE_APP_ID,
 };
 
-const app = getApps().length ? getApp() : initializeApp(firebaseConfig);
+let app: FirebaseApp;
+let authInstance: Auth;
+let dbInstance: Firestore;
+let storageInstance: FirebaseStorage;
 
-export const auth = getAuth(app);
-export const db = getFirestore(app);
-export const storage = getStorage(app);
+const cloudEnabled = !!(
+  firebaseConfig.apiKey &&
+  firebaseConfig.projectId &&
+  firebaseConfig.authDomain
+);
 
-export const ensureAnonAuth = (): Promise<User> =>
-  new Promise((resolve, reject) => {
-    const unsubscribe = onAuthStateChanged(
-      auth,
-      (user) => {
-        unsubscribe();
-        if (user) {
-          resolve(user);
-        } else {
-          signInAnonymously(auth)
-            .then((userCredential) => resolve(userCredential.user))
-            .catch(reject);
-        }
-      },
-      (error) => {
-        unsubscribe();
-        reject(error);
+if (cloudEnabled) {
+  if (getApps().length === 0) {
+    app = initializeApp(firebaseConfig);
+  } else {
+    app = getApps()[0]; 
+  }
+  authInstance = getAuth(app);
+  dbInstance = getFirestore(app);
+  storageInstance = getStorage(app);
+} else {
+  console.warn("Firebase config missing. Running in local-only mode.");
+}
+
+export const auth = authInstance;
+export const db = dbInstance;
+export const storage = storageInstance;
+
+export const ensureAnonAuth = (): Promise<User | null> => {
+  if (!cloudEnabled || !auth) {
+    return Promise.resolve(null);
+  }
+
+  return new Promise((resolve, reject) => {
+    const unsubscribe = onAuthStateChanged(auth, (user) => {
+      unsubscribe();
+      if (user) {
+        resolve(user);
+      } else {
+        signInAnonymously(auth)
+          .then((userCredential) => resolve(userCredential.user))
+          .catch(reject);
       }
-    );
+    });
   });
+};
